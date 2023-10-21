@@ -1,0 +1,207 @@
+module inventory {
+
+    yang-version 1.1;
+    namespace "https://www.turktelekom.com.tr/inventory";
+    prefix inv;
+
+    import ietf-inet-types {
+        prefix inet;
+    }
+    import tailf-common {
+        prefix tailf;
+    }
+    import tailf-ncs {
+        prefix ncs;
+    }
+
+    description
+      "Inventory for multi-vendor device inventory management.";
+
+    revision 2023-10-20 {
+        description
+          "Initial revision.";
+    }
+
+    typedef inv-string {
+        type string {
+            pattern
+              '[^\s]+' {
+                error-message
+                  "No space/s allowed.";
+            }
+        }
+    }
+
+    grouping inventory-action-grouping {
+        tailf:action action-update-inventory-manager {
+            tailf:info "Update device data into inventory";
+            tailf:actionpoint update-inventory-manager;
+
+            input {
+                leaf target-devices {
+                    tailf:info "Specify device scope for the action";
+                    type enumeration {
+                        enum all;
+                        enum specify;
+                    }
+                    mandatory true;
+                }
+
+                leaf-list device {
+                    tailf:info "Fill the list with device(s) the action should run towards";
+                    when "../target-devices = 'specify'";
+                    type leafref {
+                        path "/ncs:devices/ncs:device/ncs:name";
+                    }
+                    min-elements 1;
+                }
+            }
+
+            output {
+                leaf result {
+                    type string;
+                }
+            }
+        }
+    }
+
+    grouping device-grouping {
+
+        leaf name {
+            tailf:info "Device Name";
+            type leafref {
+                path "/ncs:devices/ncs:device/ncs:name";
+            }
+        }
+
+        leaf platform {
+            tailf:info "Device Platform";
+            type string;
+        }
+
+        leaf version {
+            tailf:info "Device Version";
+            type string;
+        }
+
+        leaf model {
+            tailf:info "Device Model";
+            type string;
+        }
+
+        leaf serial-number {
+            tailf:info "Device Management Address";
+            type string;
+        }
+    }
+
+    grouping inventory-grouping {
+
+        leaf name {
+            tailf:info "Module Name";
+            type string;
+        }
+
+        leaf description {
+            tailf:info "Module Description";
+            type string;
+        }
+
+        leaf pid {
+            tailf:info "Module PID";
+            type string;
+        }
+
+        leaf serial-number {
+            tailf:info "Module SN";
+            type string;
+        }
+    }
+
+    grouping controller-grouping {
+        leaf id {
+            tailf:info "Interface controller id";
+            type string;
+        }
+
+        leaf controller-state {
+            tailf:info "Interface controller state";
+            type string;
+        }
+
+        leaf optics-type {
+            tailf:info "Interface controller optical module type";
+            type string;
+        }
+
+        leaf name {
+            tailf:info "Interface controller optical module name";
+            type string;
+        }
+
+        leaf part-number {
+            tailf:info "Interface controller optical module part number";
+            type string;
+        }
+
+        leaf serial-number {
+            tailf:info "Interface controller optical module serial number";
+            type string;
+        }
+
+        leaf pid {
+            tailf:info "Module PID";
+            type string;
+        }
+    }
+
+    list inventory-manager {
+        description
+          "Multi-vendor device inventory management.";
+
+        uses ncs:service-data;
+        ncs:servicepoint inventory-manager-servicepoint;
+
+        key name;
+
+        leaf name {
+            tailf:info "Inventory group name";
+            type inv-string;
+        }
+
+        list device {
+
+            key name;
+
+            uses inv:device-grouping;
+
+            list inventory {
+                tailf:info "Device Module Information.";
+
+                config false;
+                tailf:cdb-oper {
+                    tailf:persistent true;
+                }
+
+                key name;
+
+                uses inv:inventory-grouping;
+            }
+
+            list controller {
+                tailf:info "Interface controller status and configuration";
+
+                config false;
+                tailf:cdb-oper {
+                    tailf:persistent true;
+                }
+
+                key id;
+
+                uses inv:controller-grouping;
+            }
+        }
+
+        uses inv:inventory-action-grouping;
+    }
+}
