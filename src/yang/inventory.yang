@@ -65,17 +65,10 @@ module inventory {
         }
     }
 
-    grouping device-grouping {
+    grouping platform-grouping {
 
         leaf name {
-            tailf:info "Device Name";
-            type leafref {
-                path "/ncs:devices/ncs:device/ncs:name";
-            }
-        }
-
-        leaf platform {
-            tailf:info "Device Platform";
+            tailf:info "Device Platform Name";
             type string;
         }
 
@@ -120,32 +113,32 @@ module inventory {
 
     grouping controller-grouping {
         leaf id {
-            tailf:info "Interface controller id";
+            tailf:info "Interface Controller Id";
             type string;
         }
 
         leaf controller-state {
-            tailf:info "Interface controller state";
+            tailf:info "Interface Controller State";
             type string;
         }
 
         leaf optics-type {
-            tailf:info "Interface controller optical module type";
+            tailf:info "Interface Controller Optical Module Type";
             type string;
         }
 
         leaf name {
-            tailf:info "Interface controller optical module name";
+            tailf:info "Interface Controller Optical Module Name";
             type string;
         }
 
         leaf part-number {
-            tailf:info "Interface controller optical module part number";
+            tailf:info "Interface Controller Optical Module Part Number";
             type string;
         }
 
         leaf serial-number {
-            tailf:info "Interface controller optical module serial number";
+            tailf:info "Interface Controller Optical Module Serial Number";
             type string;
         }
 
@@ -165,7 +158,7 @@ module inventory {
         key name;
 
         leaf name {
-            tailf:info "Inventory group name";
+            tailf:info "Inventory Group Name";
             type inv-string;
         }
 
@@ -173,10 +166,25 @@ module inventory {
 
             key name;
 
-            uses inv:device-grouping;
+            leaf name {
+                tailf:info "Device Name";
+                type leafref {
+                    path "/ncs:devices/ncs:device/ncs:name";
+                }
+            }
+
+            container platform {
+                tailf:info "Device Platform Information";
+                config false;
+                tailf:cdb-oper {
+                    tailf:persistent true;
+                }
+
+                uses inv:platform-grouping;
+            }
 
             list inventory {
-                tailf:info "Device Module Information.";
+                tailf:info "Device Module Information";
 
                 config false;
                 tailf:cdb-oper {
@@ -189,7 +197,7 @@ module inventory {
             }
 
             list controller {
-                tailf:info "Interface controller status and configuration";
+                tailf:info "Interface Controller Status and Configuration";
 
                 config false;
                 tailf:cdb-oper {
