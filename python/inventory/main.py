@@ -5,6 +5,38 @@ import _ncs
 
 INDENTATION = " "
 USER = "admin"
+ELABEL_BRIEF = """
+Elabel brief information:
+-------------------------------------------------------------------------------------------------------------------------------------------------
+Slot #          BoardType                                BarCode                 Description
+-------------------------------------------------------------------------------------------------------------------------------------------------
+LPU 1           CR57EMGFB23                              210305505310HA000037    LPUI-51-E-48xFE/GE-SFP-A
+  PIC 0         CR57EFGFB2                               030PMH10HA000226        24x100/1000Base-X-SFP
+  PIC 1         CR57EFGFB2                               030PMH10HA000103        24x100/1000Base-X-SFP
+LPU 6           CR57LBXF20                               210305468110E6000203    LPUI-120-12x10GBase LAN/WAN-SFP+ -A
+  PIC 0         CR57LBXF2                                030QKK10E5000519        P120-12x10GBase LAN/WAN-SFP+ -A
+LPU 7           CR57LBXF20                               210305468110JA000271    LPUI-120-12x10GBase LAN/WAN-SFP+ -A
+  PIC 0         CR57LBXF2                                030QKKW0J9000915        P120-12x10GBase LAN/WAN-SFP+ -A
+LPU 8           CR57LBXF20                               210305468110JA000259    LPUI-120-12x10GBase LAN/WAN-SFP+ -A
+  PIC 0         CR57LBXF2                                030QKKW0J9000241        P120-12x10GBase LAN/WAN-SFP+ -A
+MPU 9           CR57SRUA1TA91                            210305726110JA000041    SRUA-1T-A
+MPU 10          CR57SRUA1TA91                            210305726110JA000030    SRUA-1T-A
+SFU 11          CR57SFU1TC00                             210305609410JA000109    SFUI-1T-C
+SFU 12          CR57SFU1TC00                             210305609410JA000106    SFUI-1T-C
+PWR 17
+ PM1            PDC-2200WB                               2102311CNPLUJ9003290
+ PM2            PDC-2200WB                               2102311CNPLUJ9003448
+ PM3            PDC-2200WB                               2102311CNPLUJ9003458
+ PM4            PDC-2200WB                               2102311CNPLUJ9003381
+ PM5            PDC-2200WB                               2102311CNPLUJ9003405
+ PM6            PDC-2200WB                               2102311CNPLUJ9003309
+FAN 19          CR56FCBJ                                 2102120866P0J8002257
+FAN 20          CR56FCBJ                                 2102120866P0J8002255
+FAN 21          CR56FCBJ                                 2102120866P0J9000129
+PMU 22          CR56PMUA                                 2102310QUCP0J8000739
+PMU 23          CR56PMUA                                 2102310QUCP0J8000713
+-------------------------------------------------------------------------------------------------------------------------------------------------
+"""
 
 
 def get_kp_service_id(keypath: ncs.maagic.keypath._KeyPath) -> str:
@@ -90,6 +122,47 @@ def iosxr_populate_controllers_grouping(controllers_data: ncs.maagic.List, inven
         trans.apply()
 
 
+def huawei_vrp_parse_inventory_data(data: str, log: ncs.log.Log):
+    import re
+    # Define a regular expression pattern to match lines with Slot, BoardType, BarCode, and Description
+    pattern = r'(\w+)\s(\d+)\s+(\S+)\s+(\S+)\s+(.*)'
+    # Find all matches in the data
+    matches = re.findall(pattern, data)
+    # Define a dictionary to store the hierarchy
+    hierarchy = {}
+    # Initialize variables to keep track of the current parent
+    current_parent = None
+    # Iterate through the matches
+    for match in matches:
+        slot, slot_number, board_type, barcode, description = match
+        # Check if the current slot is a parent (e.g., LPU, PWR)
+        if slot in ['LPU', 'MPU', 'SFU', 'PWR', 'FAN', 'PMU']:
+            current_parent, current_parent_number = slot, slot_number
+            hierarchy[current_parent] = {current_parent_number: {}}
+        else:
+            if current_parent is not None:
+                # Add the current match as a child to the current parent
+                hierarchy[current_parent][current_parent_number][slot][slot_number] = {
+                    "BoardType": board_type,
+                    "BarCode": barcode,
+                    "Description": description
+                }
+    import json
+    log.info(json.dumps(hierarchy, indent=2))
+
+
+def huawei_vrp_get_device_live_status_exec_inventory(root: ncs.maagic.Root, hostname: str, log: ncs.log.Log) -> ncs.maagic.List:
+    """Get device inventory data from live-status exec."""
+    log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
+    # live_status = root.ncs__devices.device[hostname].live_status.vrp_stats__exec.display
+    # action_input = live_status.get_input()
+    # action_input.args = ["elabel brief"]
+    # inventory_data = live_status(action_input).result
+    inventory_data = huawei_vrp_parse_inventory_data(ELABEL_BRIEF, log)
+    log.info("Device ##" + INDENTATION * 2 + hostname + " inventory data is gathered.")
+    return inventory_data
+
+
 def huawei_vrp_get_device_live_status_interface(root: ncs.maagic.Root, hostname: str, log: ncs.log.Log) -> ncs.maagic.List:
     """Get device interface data from ned live-status."""
     log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
@@ -114,8 +187,16 @@ def huawei_vrp_populate_controllers_grouping(interface_data: ncs.maagic.List, tr
         inventory_manager = ncs.maagic.get_node(trans, f"/inv:inventory-manager{{{inventory_name}}}")
         device = inventory_manager.device[device_hostname]
         for data in interface_data:
-            controller = device.controller.create
-            
+            controller = device.controller.create(data.name)
+            controller.controller_state = data.admin_state ## TODO Think for sustainability
+        for data in transceiver_data:
+            controller = device.controller[data.interface]
+            controller.optics_type = data.transceiver_type
+            controller.name = data.vendor_name
+            controller.part_number = data.vendor_part_number
+            controller.serial_number = data.manufacture_serial_number
+            log.info("Controller ##" + INDENTATION * 4 + data.interface + " is created.")
+        trans.apply()
 
 # ------------------------
 # Service CALLBACK
@@ -169,9 +250,10 @@ class InventoryUpdate(ncs.dp.Action):
             
             elif platform == "huawei-vrp":
                 self.log.info("Device ##" + INDENTATION * 2 + hostname + " platform is huawei-vrp.")
+                inventory_data = huawei_vrp_get_device_live_status_exec_inventory(root, hostname, self.log)
                 interface_data = huawei_vrp_get_device_live_status_interface(root, hostname, self.log)
                 transceiver_data = huawei_vrp_get_device_live_status_transceiver(root, hostname, self.log)
-
+                huawei_vrp_populate_controllers_grouping(interface_data, transceiver_data, inventory_name, hostname, self.log)
 
         output.result = f"Devices processed: {len(devices)}"
 
