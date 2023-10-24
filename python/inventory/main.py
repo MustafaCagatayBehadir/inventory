@@ -1,10 +1,14 @@
 """Inventory Action Module."""
+import re
+from typing import List, Tuple
+from collections import namedtuple
 import inspect
 import ncs
 import _ncs
 
 INDENTATION = " "
 USER = "admin"
+
 ELABEL_BRIEF = """
 Elabel brief information:
 -------------------------------------------------------------------------------------------------------------------------------------------------
@@ -65,7 +69,7 @@ def populate_platform_grouping(inventory_name: str, device_hostname: str, log: n
         device_platform.version = platform.version
         device_platform.model = platform.model
         device_platform.serial_number = platform.serial_number
-        log.info("Device ##" + INDENTATION * 2 + device_hostname + " platform details are setted.")
+        log.info("Device ##" + INDENTATION * 2 + device_hostname + " platform details are set.")
         trans.apply()
 
 
@@ -86,7 +90,7 @@ def iosxr_get_device_live_status_controllers(root: ncs.maagic.Root, hostname: st
 
 
 def iosxr_populate_inventory_grouping(inventory_data: ncs.maagic.List, inventory_name: str, device_hostname: str,
-                                log: ncs.log.Log) -> None:
+                                      log: ncs.log.Log) -> None:
     """Populate inventory list under inventory device."""
     log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
     with ncs.maapi.single_write_trans(USER, 'system') as trans:
@@ -101,8 +105,8 @@ def iosxr_populate_inventory_grouping(inventory_data: ncs.maagic.List, inventory
         trans.apply()
 
 
-def iosxr_populate_controllers_grouping(controllers_data: ncs.maagic.List, inventory_name: str, device_hostname: str, 
-                                        log: ncs.log.Log) -> None:
+def iosxr_populate_controllers_grouping(controllers_data: ncs.maagic.List, inventory_name: str, device_hostname: str,
+                                       log: ncs.log.Log) -> None:
     """Populate controllers list under inventory device."""
     log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
     with ncs.maapi.single_write_trans(USER, 'system') as trans:
@@ -122,33 +126,38 @@ def iosxr_populate_controllers_grouping(controllers_data: ncs.maagic.List, inven
         trans.apply()
 
 
-def huawei_vrp_parse_inventory_data(data: str, log: ncs.log.Log):
-    import re
-    # Define a regular expression pattern to match lines with Slot, BoardType, BarCode, and Description
-    pattern = r'(\w+)\s(\d+)\s+(\S+)\s+(\S+)\s+(.*)'
-    # Find all matches in the data
-    matches = re.findall(pattern, data)
-    # Define a dictionary to store the hierarchy
-    hierarchy = {}
-    # Initialize variables to keep track of the current parent
-    current_parent = None
-    # Iterate through the matches
-    for match in matches:
-        slot, slot_number, board_type, barcode, description = match
-        # Check if the current slot is a parent (e.g., LPU, PWR)
-        if slot in ['LPU', 'MPU', 'SFU', 'PWR', 'FAN', 'PMU']:
-            current_parent, current_parent_number = slot, slot_number
-            hierarchy[current_parent] = {current_parent_number: {}}
-        else:
-            if current_parent is not None:
-                # Add the current match as a child to the current parent
-                hierarchy[current_parent][current_parent_number][slot][slot_number] = {
-                    "BoardType": board_type,
-                    "BarCode": barcode,
-                    "Description": description
-                }
-    import json
-    log.info(json.dumps(hierarchy, indent=2))
+def huawei_vrp_parse_inventory_data(data: str, hostname: str, log: ncs.log.Log) -> List[namedtuple]:
+    log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
+    inventory = []
+    Inventory = namedtuple('Inventory', ['name', 'descr', 'pid', 'sn'])
+    parent_pattern = r'(\w+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(.*)'
+    power_pattern = r'(\w+)\s+(\d+)'
+    child_pattern = r'\s+(\w+)\s*(\d+)\s+(\S+)\s+(\S+)\s+(.*)'
+
+    for line in data.splitlines():
+        parent_match = re.match(parent_pattern, line)
+        power_match = re.match(power_pattern, line)
+        child_match = re.match(child_pattern, line)
+
+        if parent_match:
+            parent_slot, parent_slot_num, pid, serial_number, description = parent_match.groups()
+        elif power_match:
+            parent_slot, parent_slot_num = power_match.groups()
+            pid = serial_number = description = ''
+        elif child_match:
+            if len(child_match.groups()) == 5:
+                child_slot, child_slot_num, pid, serial_number, description = child_match.groups()
+            elif len(child_match.groups()) == 4:
+                description = ''
+
+        if parent_match or power_match:
+            inventory.append(Inventory(f"{parent_slot}{parent_slot_num}", description, pid, serial_number))
+        elif child_match:
+            child_slot_num = f'{parent_slot_num}/{child_slot_num}'
+            inventory.append(Inventory(f"{child_slot}{child_slot_num}", description, pid, serial_number))
+
+    log.info("Device ##" + INDENTATION * 2 + hostname + " inventory data is parsed.")
+    return inventory
 
 
 def huawei_vrp_get_device_live_status_exec_inventory(root: ncs.maagic.Root, hostname: str, log: ncs.log.Log) -> ncs.maagic.List:
@@ -158,7 +167,7 @@ def huawei_vrp_get_device_live_status_exec_inventory(root: ncs.maagic.Root, host
     # action_input = live_status.get_input()
     # action_input.args = ["elabel brief"]
     # inventory_data = live_status(action_input).result
-    inventory_data = huawei_vrp_parse_inventory_data(ELABEL_BRIEF, log)
+    inventory_data = huawei_vrp_parse_inventory_data(ELABEL_BRIEF, hostname, log)
     log.info("Device ##" + INDENTATION * 2 + hostname + " inventory data is gathered.")
     return inventory_data
 
@@ -179,7 +188,23 @@ def huawei_vrp_get_device_live_status_transceiver(root: ncs.maagic.Root, hostnam
     return transceiver_data
 
 
-def huawei_vrp_populate_controllers_grouping(interface_data: ncs.maagic.List, transceiver_data: ncs.maagic.List, 
+def huawei_vrp_populate_inventory_grouping(inventory_data: ncs.maagic.List, inventory_name: str, device_hostname: str,
+                                          log: ncs.log.Log) -> None:
+    """Populate inventory list under inventory device."""
+    log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
+    with ncs.maapi.single_write_trans(USER, 'system') as trans:
+        inventory_manager = ncs.maagic.get_node(trans, f"/inv:inventory-manager{{{inventory_name}}}")
+        device = inventory_manager.device[device_hostname]
+        for data in inventory_data:
+            module = device.inventory.create(data.name)
+            module.description = data.descr
+            module.pid = data.pid
+            module.serial_number = data.sn
+            log.info("Module ##" + INDENTATION * 4 + data.name + " is created.")
+        trans.apply()
+
+
+def huawei_vrp_populate_controllers_grouping(interface_data: ncs.maagic.List, transceiver_data: ncs.maagic.List,
                                              inventory_name: str, device_hostname: str, log: ncs.log.Log) -> None:
     """Populate controllers list under inventory device."""
     log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
@@ -188,7 +213,7 @@ def huawei_vrp_populate_controllers_grouping(interface_data: ncs.maagic.List, tr
         device = inventory_manager.device[device_hostname]
         for data in interface_data:
             controller = device.controller.create(data.name)
-            controller.controller_state = data.admin_state ## TODO Think for sustainability
+            controller.controller_state = data.admin_state  # TODO Think for sustainability
         for data in transceiver_data:
             controller = device.controller[data.interface]
             controller.optics_type = data.transceiver_type
@@ -197,6 +222,7 @@ def huawei_vrp_populate_controllers_grouping(interface_data: ncs.maagic.List, tr
             controller.serial_number = data.manufacture_serial_number
             log.info("Controller ##" + INDENTATION * 4 + data.interface + " is created.")
         trans.apply()
+
 
 # ------------------------
 # Service CALLBACK
@@ -240,20 +266,22 @@ class InventoryUpdate(ncs.dp.Action):
             self.log.info("Sync ##" + INDENTATION * 2 + hostname)
             platform = get_device_platform_name(root, hostname, self.log)
             populate_platform_grouping(inventory_name, hostname, self.log)
-            
+
             if platform == "ios-xr":
                 self.log.info("Device ##" + INDENTATION * 2 + hostname + " platform is ios-xr.")
                 inventory_data = iosxr_get_device_live_status_inventory(root, hostname, self.log)
                 controllers_data = iosxr_get_device_live_status_controllers(root, hostname, self.log)
                 iosxr_populate_inventory_grouping(inventory_data, inventory_name, hostname, self.log)
                 iosxr_populate_controllers_grouping(controllers_data, inventory_name, hostname, self.log)
-            
+
             elif platform == "huawei-vrp":
                 self.log.info("Device ##" + INDENTATION * 2 + hostname + " platform is huawei-vrp.")
                 inventory_data = huawei_vrp_get_device_live_status_exec_inventory(root, hostname, self.log)
                 interface_data = huawei_vrp_get_device_live_status_interface(root, hostname, self.log)
                 transceiver_data = huawei_vrp_get_device_live_status_transceiver(root, hostname, self.log)
-                huawei_vrp_populate_controllers_grouping(interface_data, transceiver_data, inventory_name, hostname, self.log)
+                huawei_vrp_populate_inventory_grouping(inventory_data, inventory_name, hostname, self.log)
+                huawei_vrp_populate_controllers_grouping(interface_data, transceiver_data, inventory_name, hostname,
+                                                        self.log)
 
         output.result = f"Devices processed: {len(devices)}"
 

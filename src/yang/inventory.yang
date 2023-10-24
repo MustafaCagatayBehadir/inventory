@@ -151,6 +151,7 @@ module inventory {
     list inventory-manager {
         description
           "Multi-vendor device inventory management.";
+        ordered-by user;
 
         uses ncs:service-data;
         ncs:servicepoint inventory-manager-servicepoint;
