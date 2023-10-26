@@ -1,6 +1,6 @@
 """Inventory Action Module."""
 import re
-from typing import List, Tuple
+from typing import List
 from collections import namedtuple
 import inspect
 import ncs
@@ -50,11 +50,11 @@ def get_kp_service_id(keypath: ncs.maagic.keypath._KeyPath) -> str:
     return service
 
 
-def get_device_platform_name(root: ncs.maagic.Root, hostname: str, log: ncs.log.Log) -> str:
+def get_device_platform_name(root: ncs.maagic.Root, device_hostname: str, log: ncs.log.Log) -> str:
     """Get device platform name."""
     log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
-    platform = root.ncs__devices.device[hostname].platform.name
-    log.info("Device ##" + INDENTATION * 2 + hostname + " platform is " + platform)
+    platform = root.ncs__devices.device[device_hostname].platform.name
+    log.info("Device ##" + INDENTATION * 2 + device_hostname + " platform is " + platform)
     return platform
 
 
@@ -73,19 +73,21 @@ def populate_platform_grouping(inventory_name: str, device_hostname: str, log: n
         trans.apply()
 
 
-def iosxr_get_device_live_status_inventory(root: ncs.maagic.Root, hostname: str, log: ncs.log.Log) -> ncs.maagic.List:
+def iosxr_get_device_live_status_inventory(root: ncs.maagic.Root, device_hostname: str,
+                                           log: ncs.log.Log) -> ncs.maagic.List:
     """Get device inventory data from ned live-status."""
     log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
-    inventory_data = root.ncs__devices.device[hostname].live_status.cisco_ios_xr_stats__inventory
-    log.info("Device ##" + INDENTATION * 2 + hostname + " inventory data is gathered.")
+    inventory_data = root.ncs__devices.device[device_hostname].live_status.cisco_ios_xr_stats__inventory
+    log.info("Device ##" + INDENTATION * 2 + device_hostname + " inventory data is gathered.")
     return inventory_data
 
 
-def iosxr_get_device_live_status_controllers(root: ncs.maagic.Root, hostname: str, log: ncs.log.Log) -> ncs.maagic.List:
+def iosxr_get_device_live_status_controllers(root: ncs.maagic.Root, device_hostname: str,
+                                             log: ncs.log.Log) -> ncs.maagic.List:
     """Get device controllers data from ned live-status."""
     log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
-    controllers_data = root.ncs__devices.device[hostname].live_status.cisco_ios_xr_stats__controllers
-    log.info("Device ##" + INDENTATION * 2 + hostname + " controllers data is gathered.")
+    controllers_data = root.ncs__devices.device[device_hostname].live_status.cisco_ios_xr_stats__controllers
+    log.info("Device ##" + INDENTATION * 2 + device_hostname + " controllers data is gathered.")
     return controllers_data
 
 
@@ -106,7 +108,7 @@ def iosxr_populate_inventory_grouping(inventory_data: ncs.maagic.List, inventory
 
 
 def iosxr_populate_controllers_grouping(controllers_data: ncs.maagic.List, inventory_name: str, device_hostname: str,
-                                       log: ncs.log.Log) -> None:
+                                        log: ncs.log.Log) -> None:
     """Populate controllers list under inventory device."""
     log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
     with ncs.maapi.single_write_trans(USER, 'system') as trans:
@@ -126,7 +128,8 @@ def iosxr_populate_controllers_grouping(controllers_data: ncs.maagic.List, inven
         trans.apply()
 
 
-def huawei_vrp_parse_inventory_data(data: str, hostname: str, log: ncs.log.Log) -> List[namedtuple]:
+def huawei_vrp_parse_inventory_data(data: str, device_hostname: str, log: ncs.log.Log) -> List[namedtuple]:
+    """Parse 'display elabel brief' cli command output."""
     log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
     inventory = []
     Inventory = namedtuple('Inventory', ['name', 'descr', 'pid', 'sn'])
@@ -156,40 +159,44 @@ def huawei_vrp_parse_inventory_data(data: str, hostname: str, log: ncs.log.Log) 
             child_slot_num = f'{parent_slot_num}/{child_slot_num}'
             inventory.append(Inventory(f"{child_slot}{child_slot_num}", description, pid, serial_number))
 
-    log.info("Device ##" + INDENTATION * 2 + hostname + " inventory data is parsed.")
+    log.info("Device ##" + INDENTATION * 2 + device_hostname + " inventory data is parsed.")
     return inventory
 
 
-def huawei_vrp_get_device_live_status_exec_inventory(root: ncs.maagic.Root, hostname: str, log: ncs.log.Log) -> ncs.maagic.List:
+def huawei_vrp_get_device_live_status_exec_inventory(root: ncs.maagic.Root, device_hostname: str,
+                                                     log: ncs.log.Log) -> ncs.maagic.List:
     """Get device inventory data from live-status exec."""
     log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
-    # live_status = root.ncs__devices.device[hostname].live_status.vrp_stats__exec.display
-    # action_input = live_status.get_input()
-    # action_input.args = ["elabel brief"]
-    # inventory_data = live_status(action_input).result
-    inventory_data = huawei_vrp_parse_inventory_data(ELABEL_BRIEF, hostname, log)
-    log.info("Device ##" + INDENTATION * 2 + hostname + " inventory data is gathered.")
-    return inventory_data
+    live_status = root.ncs__devices.device[device_hostname].live_status.vrp_stats__exec.display
+    action_input = live_status.get_input()
+    action_input.args = ["elabel brief"]
+    inventory_data = live_status(action_input).result
+    inventory_data = ELABEL_BRIEF  # TODO Remove this line when working with real device
+    parsed_inventory_data = huawei_vrp_parse_inventory_data(inventory_data, device_hostname, log)
+    log.info("Device ##" + INDENTATION * 2 + device_hostname + " inventory data is gathered.")
+    return parsed_inventory_data
 
 
-def huawei_vrp_get_device_live_status_interface(root: ncs.maagic.Root, hostname: str, log: ncs.log.Log) -> ncs.maagic.List:
+def huawei_vrp_get_device_live_status_interface(root: ncs.maagic.Root, device_hostname: str,
+                                                log: ncs.log.Log) -> ncs.maagic.List:
     """Get device interface data from ned live-status."""
     log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
-    interface_data = root.ncs__devices.device[hostname].live_status.vrp_stats__interface
-    log.info("Device ##" + INDENTATION * 2 + hostname + " interface data is gathered.")
+    interface_data = root.ncs__devices.device[device_hostname].live_status.vrp_stats__interface
+    log.info("Device ##" + INDENTATION * 2 + device_hostname + " interface data is gathered.")
     return interface_data
 
 
-def huawei_vrp_get_device_live_status_transceiver(root: ncs.maagic.Root, hostname: str, log: ncs.log.Log) -> ncs.maagic.List:
+def huawei_vrp_get_device_live_status_transceiver(root: ncs.maagic.Root, device_hostname: str,
+                                                  log: ncs.log.Log) -> ncs.maagic.List:
     """Get device transceiver data from ned live-status."""
     log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
-    transceiver_data = root.ncs__devices.device[hostname].live_status.vrp_stats__transceiver
-    log.info("Device ##" + INDENTATION * 2 + hostname + " transceiver data is gathered.")
+    transceiver_data = root.ncs__devices.device[device_hostname].live_status.vrp_stats__transceiver
+    log.info("Device ##" + INDENTATION * 2 + device_hostname + " transceiver data is gathered.")
     return transceiver_data
 
 
 def huawei_vrp_populate_inventory_grouping(inventory_data: ncs.maagic.List, inventory_name: str, device_hostname: str,
-                                          log: ncs.log.Log) -> None:
+                                           log: ncs.log.Log) -> None:
     """Populate inventory list under inventory device."""
     log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
     with ncs.maapi.single_write_trans(USER, 'system') as trans:
@@ -221,6 +228,76 @@ def huawei_vrp_populate_controllers_grouping(interface_data: ncs.maagic.List, tr
             controller.part_number = data.vendor_part_number
             controller.serial_number = data.manufacture_serial_number
             log.info("Controller ##" + INDENTATION * 4 + data.interface + " is created.")
+        trans.apply()
+
+
+def alu_sr_get_device_live_status_card(root: ncs.maagic.Root, device_hostname: str,
+                                       log: ncs.log.Log) -> ncs.maagic.List:
+    """Get device card data from ned live-status."""
+    log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
+    card_data = root.ncs__devices.device[device_hostname].live_status.alu_stats__card
+    log.info("Device ##" + INDENTATION * 2 + device_hostname + " card data is gathered.")
+    return card_data
+
+
+def alu_sr_get_device_live_status_slot(root: ncs.maagic.Root, device_hostname: str,
+                                       log: ncs.log.Log) -> ncs.maagic.List:
+    """Get device slot data from ned live-status."""
+    log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
+    slot_data = root.ncs__devices.device[device_hostname].live_status.alu_stats__slot
+    log.info("Device ##" + INDENTATION * 2 + device_hostname + " card data is gathered.")
+    return slot_data
+
+
+def alu_sr_get_device_live_status_ports(root: ncs.maagic.Root, device_hostname: str,
+                                        log: ncs.log.Log) -> ncs.maagic.List:
+    """Get device pots data from ned live-status."""
+    log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
+    ports_data = root.ncs__devices.device[device_hostname].live_status.alu_stats__ports
+    log.info("Device ##" + INDENTATION * 2 + device_hostname + " ports data is gathered.")
+    return ports_data
+
+
+def alu_sr_populate_inventory_grouping(card_data: ncs.maagic.List, slot_data: ncs.maagic.List, inventory_name: str,
+                                       device_hostname: str, log: ncs.log.Log) -> None:
+    """Populate inventory list under inventory device."""
+    log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
+    with ncs.maapi.single_write_trans(USER, 'system') as trans:
+        inventory_manager = ncs.maagic.get_node(trans, f"/inv:inventory-manager{{{inventory_name}}}")
+        device = inventory_manager.device[device_hostname]
+        for data in card_data:
+            module = device.inventory.create(data.card_id)
+            module.description = data.provisioned_type
+            module.pid = data.part_number
+            module.serial_number = data.serial_number
+            log.info("Module ##" + INDENTATION * 4 + data.card_id + " is created.")
+        for data in slot_data:
+            for mda_data in slot_data.mda:
+                mda_id = data.slot_id + "/" + mda_data.mda_id
+                module = device.inventory.create(mda_id)
+                module.description = mda_data.provisioned_type
+                module.pid = mda_data.part_number
+                module.serial_number = mda_data.serial_number
+                log.info("Module ##" + INDENTATION * 4 + mda_id + " is created.")
+        trans.apply()
+
+
+def alu_sr_populate_controllers_grouping(ports_data: ncs.maagic.List, inventory_name: str, device_hostname: str,
+                                         log: ncs.log.Log) -> None:
+    """Populate controllers list under inventory device."""
+    log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
+    with ncs.maapi.single_write_trans(USER, 'system') as trans:
+        inventory_manager = ncs.maagic.get_node(trans, f"/inv:inventory-manager{{{inventory_name}}}")
+        device = inventory_manager.device[device_hostname]
+        for data in ports_data:
+            controller = device.controller.create(data.port_id)
+            controller.controller_state = data.port_state
+            transceiver = data.transceiver_data
+            controller.optics_type = transceiver.transceiver_type
+            controller.part_number = transceiver.part_number
+            controller.serial_number = transceiver.serial_number
+            controller.pid = transceiver.model_number
+            log.info("Controller ##" + INDENTATION * 4 + data.port_id + " is created.")
         trans.apply()
 
 
@@ -281,7 +358,14 @@ class InventoryUpdate(ncs.dp.Action):
                 transceiver_data = huawei_vrp_get_device_live_status_transceiver(root, hostname, self.log)
                 huawei_vrp_populate_inventory_grouping(inventory_data, inventory_name, hostname, self.log)
                 huawei_vrp_populate_controllers_grouping(interface_data, transceiver_data, inventory_name, hostname,
-                                                        self.log)
+                                                         self.log)
+            elif platform == "alu-sr":
+                self.log.info("Device ##" + INDENTATION * 2 + hostname + " platform is huawei-vrp.")
+                card_data = alu_sr_get_device_live_status_card(root, hostname, self.log)
+                slot_data = alu_sr_get_device_live_status_slot(root, hostname, self.log)
+                ports_data = alu_sr_get_device_live_status_ports(root, hostname, self.log)
+                alu_sr_populate_inventory_grouping(card_data, slot_data, inventory_name, hostname, self.log)
+                alu_sr_populate_controllers_grouping(ports_data, inventory_name, hostname, self.log)
 
         output.result = f"Devices processed: {len(devices)}"
 
