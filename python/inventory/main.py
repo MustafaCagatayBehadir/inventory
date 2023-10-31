@@ -61,7 +61,7 @@ def get_device_platform_name(root: ncs.maagic.Root, device_hostname: str, log: n
 def populate_platform_grouping(inventory_name: str, device_hostname: str, log: ncs.log.Log) -> None:
     """Populate device information under inventory device."""
     log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
-    with ncs.maapi.single_write_trans(USER, 'system') as trans:
+    with ncs.maapi.single_write_trans(USER, "system") as trans:
         platform = ncs.maagic.get_node(trans, f"/ncs:devices/device{{{device_hostname}}}/platform")
         inventory_manager = ncs.maagic.get_node(trans, f"/inv:inventory-manager{{{inventory_name}}}")
         device_platform = inventory_manager.device[device_hostname].platform
@@ -95,7 +95,7 @@ def iosxr_populate_inventory_grouping(inventory_data: ncs.maagic.List, inventory
                                       log: ncs.log.Log) -> None:
     """Populate inventory list under inventory device."""
     log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
-    with ncs.maapi.single_write_trans(USER, 'system') as trans:
+    with ncs.maapi.single_write_trans(USER, "system") as trans:
         inventory_manager = ncs.maagic.get_node(trans, f"/inv:inventory-manager{{{inventory_name}}}")
         device = inventory_manager.device[device_hostname]
         for data in inventory_data:
@@ -111,7 +111,7 @@ def iosxr_populate_controllers_grouping(controllers_data: ncs.maagic.List, inven
                                         log: ncs.log.Log) -> None:
     """Populate controllers list under inventory device."""
     log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
-    with ncs.maapi.single_write_trans(USER, 'system') as trans:
+    with ncs.maapi.single_write_trans(USER, "system") as trans:
         inventory_manager = ncs.maagic.get_node(trans, f"/inv:inventory-manager{{{inventory_name}}}")
         device = inventory_manager.device[device_hostname]
         for data in controllers_data.Optics:
@@ -171,7 +171,7 @@ def huawei_vrp_get_device_live_status_exec_inventory(root: ncs.maagic.Root, devi
     action_input = live_status.get_input()
     action_input.args = ["elabel brief"]
     inventory_data = live_status(action_input).result
-    inventory_data = ELABEL_BRIEF  # TODO Remove this line when working with real device
+    # inventory_data = ELABEL_BRIEF  # TODO Remove this line when working with real device
     parsed_inventory_data = huawei_vrp_parse_inventory_data(inventory_data, device_hostname, log)
     log.info("Device ##" + INDENTATION * 2 + device_hostname + " inventory data is gathered.")
     return parsed_inventory_data
@@ -199,7 +199,7 @@ def huawei_vrp_populate_inventory_grouping(inventory_data: ncs.maagic.List, inve
                                            log: ncs.log.Log) -> None:
     """Populate inventory list under inventory device."""
     log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
-    with ncs.maapi.single_write_trans(USER, 'system') as trans:
+    with ncs.maapi.single_write_trans(USER, "system") as trans:
         inventory_manager = ncs.maagic.get_node(trans, f"/inv:inventory-manager{{{inventory_name}}}")
         device = inventory_manager.device[device_hostname]
         for data in inventory_data:
@@ -215,7 +215,7 @@ def huawei_vrp_populate_controllers_grouping(interface_data: ncs.maagic.List, tr
                                              inventory_name: str, device_hostname: str, log: ncs.log.Log) -> None:
     """Populate controllers list under inventory device."""
     log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
-    with ncs.maapi.single_write_trans(USER, 'system') as trans:
+    with ncs.maapi.single_write_trans(USER, "system") as trans:
         inventory_manager = ncs.maagic.get_node(trans, f"/inv:inventory-manager{{{inventory_name}}}")
         device = inventory_manager.device[device_hostname]
         for data in interface_data:
@@ -262,7 +262,7 @@ def alu_sr_populate_inventory_grouping(card_data: ncs.maagic.List, slot_data: nc
                                        device_hostname: str, log: ncs.log.Log) -> None:
     """Populate inventory list under inventory device."""
     log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
-    with ncs.maapi.single_write_trans(USER, 'system') as trans:
+    with ncs.maapi.single_write_trans(USER, "system") as trans:
         inventory_manager = ncs.maagic.get_node(trans, f"/inv:inventory-manager{{{inventory_name}}}")
         device = inventory_manager.device[device_hostname]
         for data in card_data:
@@ -286,7 +286,7 @@ def alu_sr_populate_controllers_grouping(ports_data: ncs.maagic.List, inventory_
                                          log: ncs.log.Log) -> None:
     """Populate controllers list under inventory device."""
     log.debug("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
-    with ncs.maapi.single_write_trans(USER, 'system') as trans:
+    with ncs.maapi.single_write_trans(USER, "system") as trans:
         inventory_manager = ncs.maagic.get_node(trans, f"/inv:inventory-manager{{{inventory_name}}}")
         device = inventory_manager.device[device_hostname]
         for data in ports_data:
