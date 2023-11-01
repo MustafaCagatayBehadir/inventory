@@ -42,6 +42,31 @@ PMU 23          CR56PMUA                                 2102310QUCP0J8000713
 -------------------------------------------------------------------------------------------------------------------------------------------------
 """
 
+OPTICAL_MODULE_BRIEF = """
+--------------------------------------------------------------------------------
+Port                   Status Duplex Type               Wavelength            RxPower     TxPower     Mode             VendorPN
+--------------------------------------------------------------------------------
+ETH2/0/0               down   full   1G-10km-esfp       1310nm                -40.00dBm   -6.07dBm    SingleMode       LTD1302-BC+1
+ETH2/0/4               down   full   1G-10km-esfp       1310nm                -40.00dBm   -5.67dBm    SingleMode       MXPD-243S-01
+ETH2/1/1               down   full   1G-10km-esfp       1310nm                -40.00dBm   -6.07dBm    SingleMode       LTD1302-BC+1
+ETH2/1/6               down   full   1G-10km-esfp       1310nm                -40.00dBm   -5.95dBm    SingleMode       LTD1302-BC+1
+ETH3/1/0               up     full   1G-10km-esfp       1310nm                -11.16dBm   -6.19dBm    SingleMode       LTD1302-BC+1
+ETH3/1/1               up     full   1G-10km-esfp       1310nm                -7.74dBm    -6.01dBm    SingleMode       LTD1302-BC+1
+ETH3/1/2               up     full   10G-10km-sfp+      1310nm                -6.84dBm    -1.59dBm    SingleMode       FTLX1471D3BCL-HU
+ETH3/1/3               up     full   1G-10km-esfp       1310nm                -6.38dBm    -6.04dBm    SingleMode       LTD1302-BC+1
+ETH3/1/4               up     full   10G-10km-sfp+      1310nm                -17.72dBm   -1.37dBm    SingleMode       FTLX1471D3BCL-HU
+ETH3/1/5               down   full   1G-10km-esfp       1310nm                -40.00dBm   -6.00dBm    SingleMode       LTD1302-BC+1
+ETH3/1/6               up     full   1G-10km-esfp       1310nm                -8.50dBm    -5.90dBm    SingleMode       LTD1302-BC+1
+ETH3/1/7               down   full   1G-10km-esfp       1310nm                -40.00dBm   -6.22dBm    SingleMode       LTD1302-BC+1
+ETH3/1/10              up     full   1G-10km-esfp       1310nm                -17.64dBm   -5.85dBm    SingleMode       LTD1302-BC+1
+ETH3/1/11              up     full   1G-10km-esfp       1310nm                -6.47dBm    -5.94dBm    SingleMode       LTD1302-BC+1
+ETH3/1/12              up     full   1G-100m-copper     unknown               --          --          CopperMode       OM9150
+ETH3/1/14              down   full   1G-100m-copper     unknown               --          --          CopperMode       OM9150
+ETH3/1/15              down   full   1G-10km-esfp       1310nm                -40.00dBm   -6.18dBm    SingleMode       LTD1302-BC+1
+ETH3/1/20              down   full   1G-100m-copper     unknown               --          --          CopperMode       OM9150
+--------------------------------------------------------------------------------
+"""
+
 
 def get_kp_service_id(keypath: ncs.maagic.keypath._KeyPath) -> str:
     """Get service name from keypath."""
@@ -163,6 +188,24 @@ def huawei_vrp_parse_inventory_data(data: str, device_hostname: str, log: ncs.lo
     return inventory
 
 
+def huawei_vrp_parse_transceiver_data(data: str, device_hostname: str, log: ncs.log.Log) -> List[namedtuple]:
+    """Parse 'display optical-module brief' cli command output."""
+    log.info("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
+    fields = ['port', 'status', 'type', 'pid']
+    Transceiver = namedtuple('Transceiver', fields)
+    transceiver_list = []
+
+    lines = data.strip().split('\n')
+    # Iterate through the lines starts with Eth
+    for line in lines[3:-1]:
+        values = line.split()
+        transceiver = Transceiver(values[0], values[1], values[3], values[-1])
+        transceiver_list.append(transceiver)
+
+    log.info("Device ##" + INDENTATION * 2 + device_hostname + " transceiver data is parsed.")
+    return transceiver_list
+
+
 def huawei_vrp_get_device_live_status_exec_inventory(root: ncs.maagic.Root, device_hostname: str,
                                                      log: ncs.log.Log) -> ncs.maagic.List:
     """Get device inventory data from live-status exec."""
@@ -177,25 +220,21 @@ def huawei_vrp_get_device_live_status_exec_inventory(root: ncs.maagic.Root, devi
     return parsed_inventory_data
 
 
-def huawei_vrp_get_device_live_status_interface(root: ncs.maagic.Root, device_hostname: str,
-                                                log: ncs.log.Log) -> ncs.maagic.List:
-    """Get device interface data from ned live-status."""
+def huawei_vrp_get_device_live_status_exec_transceiver(root: ncs.maagic.Root, device_hostname: str,
+                                                       log: ncs.log.Log) -> ncs.maagic.List:
+    """Get device transceiver data from live-status exec."""
     log.info("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
-    interface_data = root.ncs__devices.device[device_hostname].live_status.vrp_stats__interface
-    log.info("Device ##" + INDENTATION * 2 + device_hostname + " interface data is gathered.")
-    return interface_data
-
-
-def huawei_vrp_get_device_live_status_transceiver(root: ncs.maagic.Root, device_hostname: str,
-                                                  log: ncs.log.Log) -> ncs.maagic.List:
-    """Get device transceiver data from ned live-status."""
-    log.info("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
-    transceiver_data = root.ncs__devices.device[device_hostname].live_status.vrp_stats__transceiver
+    live_status = root.ncs__devices.device[device_hostname].live_status.vrp_stats__exec.display
+    action_input = live_status.get_input()
+    action_input.args = ["optical-module brief"]
+    transceiver_data = live_status(action_input).result
+    # transceiver_data = OPTICAL_MODULE_BRIEF  # TODO Remove this line when working with real device
+    parsed_transceiver_data = huawei_vrp_parse_transceiver_data(transceiver_data, device_hostname, log)
     log.info("Device ##" + INDENTATION * 2 + device_hostname + " transceiver data is gathered.")
-    return transceiver_data
+    return parsed_transceiver_data
 
 
-def huawei_vrp_populate_inventory_grouping(inventory_data: ncs.maagic.List, inventory_name: str, device_hostname: str,
+def huawei_vrp_populate_inventory_grouping(inventory_data: List[namedtuple], inventory_name: str, device_hostname: str,
                                            log: ncs.log.Log) -> None:
     """Populate inventory list under inventory device."""
     log.info("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
@@ -211,25 +250,19 @@ def huawei_vrp_populate_inventory_grouping(inventory_data: ncs.maagic.List, inve
         trans.apply()
 
 
-def huawei_vrp_populate_controllers_grouping(interface_data: ncs.maagic.List, transceiver_data: ncs.maagic.List,
-                                             inventory_name: str, device_hostname: str, log: ncs.log.Log) -> None:
+def huawei_vrp_populate_controllers_grouping(transceiver_data: List[namedtuple], inventory_name: str,
+                                             device_hostname: str, log: ncs.log.Log) -> None:
     """Populate controllers list under inventory device."""
     log.info("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
     with ncs.maapi.single_write_trans(USER, "system") as trans:
         inventory_manager = ncs.maagic.get_node(trans, f"/inv:inventory-manager{{{inventory_name}}}")
         device = inventory_manager.device[device_hostname]
-        for data in interface_data:
-            log.info("In loop, data in interface_data...")
-            controller = device.controller.create(data.name)
-            controller.controller_state = data.admin_state  # TODO Think for sustainability
         for data in transceiver_data:
-            log.info("In loop, data in data in transceiver_data...")
-            controller = device.controller[data.interface]
-            controller.optics_type = data.transceiver_type
-            controller.name = data.vendor_name
-            controller.part_number = data.vendor_part_number
-            controller.serial_number = data.manufacture_serial_number
-            log.info("Controller ##" + INDENTATION * 4 + data.interface + " is created.")
+            controller = device.controller.create(data.port)
+            controller.controller_state = data.status
+            controller.optics_type = data.type
+            controller.pid = data.pid
+            log.info("Controller ##" + INDENTATION * 4 + data.port + " is created.")
         trans.apply()
 
 
@@ -274,8 +307,8 @@ def alu_sr_populate_inventory_grouping(card_data: ncs.maagic.List, slot_data: nc
             module.serial_number = data.serial_number
             log.info("Module ##" + INDENTATION * 4 + data.card_id + " is created.")
         for data in slot_data:
-            for mda_data in slot_data.mda:
-                mda_id = data.slot_id + "/" + mda_data.mda_id
+            for mda_data in data.mda:
+                mda_id = str(data.slot_id) + "/" + str(mda_data.mda_id)
                 module = device.inventory.create(mda_id)
                 module.description = mda_data.provisioned_type
                 module.pid = mda_data.part_number
@@ -356,21 +389,15 @@ class InventoryUpdate(ncs.dp.Action):
             elif platform == "huawei-vrp":
                 self.log.info("Device ##" + INDENTATION * 2 + hostname + " platform is huawei-vrp.")
                 inventory_data = huawei_vrp_get_device_live_status_exec_inventory(root, hostname, self.log)
-                interface_data = huawei_vrp_get_device_live_status_interface(root, hostname, self.log)
-                transceiver_data = huawei_vrp_get_device_live_status_transceiver(root, hostname, self.log)
-                self.log.info("Device ##" + INDENTATION * 2 + hostname + " interface_data type is " + type(interface_data))
-                self.log.info("Device ##" + INDENTATION * 2 + hostname + " transceiver_data type is " + type(transceiver_data))
+                transceiver_data = huawei_vrp_get_device_live_status_exec_transceiver(root, hostname, self.log)
                 huawei_vrp_populate_inventory_grouping(inventory_data, inventory_name, hostname, self.log)
-                huawei_vrp_populate_controllers_grouping(interface_data, transceiver_data, inventory_name, hostname,
-                                                         self.log)
-            elif platform == "alu-sr":
+                huawei_vrp_populate_controllers_grouping(transceiver_data, inventory_name, hostname, self.log)
+
+            else:
                 self.log.info("Device ##" + INDENTATION * 2 + hostname + " platform is alu-sr.")
                 card_data = alu_sr_get_device_live_status_card(root, hostname, self.log)
                 slot_data = alu_sr_get_device_live_status_slot(root, hostname, self.log)
                 ports_data = alu_sr_get_device_live_status_ports(root, hostname, self.log)
-                self.log.info("Device ##" + INDENTATION * 2 + hostname + " card_data type is " + type(card_data))
-                self.log.info("Device ##" + INDENTATION * 2 + hostname + " slot_data type is " + type(slot_data))
-                self.log.info("Device ##" + INDENTATION * 2 + hostname + " ports_data type is " + type(ports_data))
                 alu_sr_populate_inventory_grouping(card_data, slot_data, inventory_name, hostname, self.log)
                 alu_sr_populate_controllers_grouping(ports_data, inventory_name, hostname, self.log)
 
