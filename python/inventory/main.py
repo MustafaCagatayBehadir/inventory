@@ -197,7 +197,7 @@ def huawei_vrp_parse_transceiver_data(data: str, device_hostname: str, log: ncs.
 
     lines = data.strip().split('\n')
     # Iterate through the lines starts with Eth
-    for line in lines[3:-1]:
+    for line in lines[4:-2]:
         values = line.split()
         transceiver = Transceiver(values[0], values[1], values[3], values[-1])
         transceiver_list.append(transceiver)
