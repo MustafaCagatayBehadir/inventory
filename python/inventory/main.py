@@ -214,7 +214,6 @@ def huawei_vrp_get_device_live_status_exec_inventory(root: ncs.maagic.Root, devi
     action_input = live_status.get_input()
     action_input.args = ["elabel brief"]
     inventory_data = live_status(action_input).result
-    # inventory_data = ELABEL_BRIEF  # TODO Remove this line when working with real device
     parsed_inventory_data = huawei_vrp_parse_inventory_data(inventory_data, device_hostname, log)
     log.info("Device ##" + INDENTATION * 2 + device_hostname + " inventory data is gathered.")
     return parsed_inventory_data
@@ -228,7 +227,6 @@ def huawei_vrp_get_device_live_status_exec_transceiver(root: ncs.maagic.Root, de
     action_input = live_status.get_input()
     action_input.args = ["optical-module brief"]
     transceiver_data = live_status(action_input).result
-    # transceiver_data = OPTICAL_MODULE_BRIEF  # TODO Remove this line when working with real device
     parsed_transceiver_data = huawei_vrp_parse_transceiver_data(transceiver_data, device_hostname, log)
     log.info("Device ##" + INDENTATION * 2 + device_hostname + " transceiver data is gathered.")
     return parsed_transceiver_data
