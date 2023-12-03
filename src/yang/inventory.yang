@@ -148,6 +148,18 @@ module inventory {
         }
     }
 
+    grouping interfaces-grouping {
+        leaf if-size {
+            tailf:info "Interface Size. Ex GigabitEthernet | TenGigabitEthernet | FortyGigE | HundredGigE | Port-channel";
+            type string;
+        }
+
+        leaf if-number {
+            tailf:info "Interface id. Ex 0/0/0 | 0/0/0/0 | 1";
+            type string;
+        }
+    }
+
     list inventory-manager {
         description
           "Multi-vendor device inventory management.";
@@ -208,6 +220,14 @@ module inventory {
                 key id;
 
                 uses inv:controller-grouping;
+            }
+
+            list interface {
+                tailf:info "Interface Reference Information";
+
+                key "if-size if-number";
+
+                uses inv:interfaces-grouping;
             }
         }
 
