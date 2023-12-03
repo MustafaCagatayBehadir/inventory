@@ -1,9 +1,10 @@
 """Inventory Action Module."""
+import inspect
 import re
 from typing import List, NamedTuple
-import inspect
-import ncs
+
 import _ncs
+import ncs
 
 INDENTATION = " "
 USER = "admin"
