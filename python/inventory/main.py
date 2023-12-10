@@ -1,7 +1,7 @@
 """Inventory Action Module."""
 import inspect
 import re
-from typing import List, NamedTuple
+from typing import List, NamedTuple, Tuple
 
 import _ncs
 import ncs
@@ -78,7 +78,9 @@ def iosxr_get_device_live_status_controllers(
     return controllers_data
 
 
-def iosxr_get_device_cdb_interfaces(root: ncs.maagic.Root, device_hostname: str, log: ncs.log.Log) -> ncs.maagic.List:
+def iosxr_get_device_cdb_interfaces(
+    root: ncs.maagic.Root, device_hostname: str, log: ncs.log.Log
+) -> ncs.maagic.Container:
     """Get device interfaces data from cdb."""
     log.info("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
     interfaces_data = root.ncs__devices.device[device_hostname].config.cisco_ios_xr__interface
@@ -144,8 +146,7 @@ def iosxr_populate_interfaces_grouping(
     with ncs.maapi.single_write_trans(USER, "system") as trans:
         inventory_manager = ncs.maagic.get_node(trans, f"/inv:inventory-manager{{{inventory_name}}}")
         device = inventory_manager.device[device_hostname]
-        log.info("Interface Data Type: ", type(interface_data))
-        log.info("Interface Data Attributes: ", dir(interface_data))
+        del device.interface  # Delete device interface list first to re-create from scratch
         for if_size in if_sizes:
             for size in getattr(interface_data, if_size):
                 if_number = str(size.id)
@@ -232,6 +233,16 @@ def huawei_vrp_get_device_live_status_exec_transceiver(
     return parsed_transceiver_data
 
 
+def huawei_vrp_get_device_cdb_interfaces(
+    root: ncs.maagic.Root, device_hostname: str, log: ncs.log.Log
+) -> ncs.maagic.Container:
+    """Get device interfaces data from cdb."""
+    log.info("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
+    interfaces_data = root.ncs__devices.device[device_hostname].config.vrp__interface
+    log.info("Device ##" + INDENTATION * 2 + device_hostname + " interfaces data is gathered.")
+    return interfaces_data
+
+
 def huawei_vrp_populate_inventory_grouping(
     inventory_data: List[VrpInventory], inventory_name: str, device_hostname: str, log: ncs.log.Log
 ) -> None:
@@ -266,6 +277,28 @@ def huawei_vrp_populate_controllers_grouping(
         trans.apply()
 
 
+def huawei_vrp_populate_interfaces_grouping(
+    interface_data: ncs.maagic.Container, inventory_name: str, device_hostname: str, log: ncs.log.Log
+) -> None:
+    """Populate interface list under inventory device."""
+    log.info("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
+    if_sizes: List = [
+        "Eth_Trunk",
+        "GigabitEthernet",
+        "Ethernet",
+    ]
+    with ncs.maapi.single_write_trans(USER, "system") as trans:
+        inventory_manager = ncs.maagic.get_node(trans, f"/inv:inventory-manager{{{inventory_name}}}")
+        device = inventory_manager.device[device_hostname]
+        del device.interface  # Delete device interface list first to re-create from scratch
+        for if_size in if_sizes:
+            for size in getattr(interface_data, if_size):
+                if_number = str(size.name).split(".", maxsplit=1)[0]
+                device.interface.create(size, if_number)
+                log.info("Interface ##" + INDENTATION * 4 + if_size + " " + if_number + " is created.")
+        trans.apply()
+
+
 def alu_sr_get_device_live_status_card(
     root: ncs.maagic.Root, device_hostname: str, log: ncs.log.Log
 ) -> ncs.maagic.List:
@@ -294,6 +327,18 @@ def alu_sr_get_device_live_status_ports(
     ports_data = root.ncs__devices.device[device_hostname].live_status.alu_stats__ports
     log.info("Device ##" + INDENTATION * 2 + device_hostname + " ports data is gathered.")
     return ports_data
+
+
+def alu_sr_get_device_cdb_interfaces(
+    root: ncs.maagic.Root, device_hostname: str, log: ncs.log.Log
+) -> Tuple[ncs.maagic.List, ncs.maagic.List]:
+    """Get device ports and lags data from cdb."""
+    log.info("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
+    ports_data: ncs.maagic.List = root.ncs__devices.device[device_hostname].config.alu__port
+    log.info("Device ##" + INDENTATION * 2 + device_hostname + " ports data is gathered.")
+    lags_data: ncs.maagic.List = root.ncs__devices.device[device_hostname].config.alu__lag
+    log.info("Device ##" + INDENTATION * 2 + device_hostname + " lags data is gathered.")
+    return ports_data, lags_data
 
 
 def alu_sr_populate_inventory_grouping(
@@ -338,6 +383,29 @@ def alu_sr_populate_controllers_grouping(
             controller.serial_number = transceiver.serial_number
             controller.pid = transceiver.model_number
             log.info("Controller ##" + INDENTATION * 4 + data.port_id + " is created.")
+        trans.apply()
+
+
+def alu_sr_populate_interfaces_grouping(
+    interface_data: Tuple[ncs.maagic.List, ncs.maagic.List], inventory_name: str, device_hostname: str, log: ncs.log.Log
+) -> None:
+    """Populate interface list under inventory device."""
+    log.info("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
+    ports_data, lags_data = interface_data
+    with ncs.maapi.single_write_trans(USER, "system") as trans:
+        inventory_manager = ncs.maagic.get_node(trans, f"/inv:inventory-manager{{{inventory_name}}}")
+        device = inventory_manager.device[device_hostname]
+        del device.interface  # Delete device interface list first to re-create from scratch
+        for port in ports_data:
+            if_size = "port"
+            if_number = str(port.port_id)
+            device.interface.create(if_size, if_number)
+            log.info("Interface ##" + INDENTATION * 4 + if_size + " " + if_number + " is created.")
+        for lag in lags_data:
+            if_size = "lag"
+            if_number = str(lag.id)
+            device.interface.create(if_size, if_number)
+            log.info("Interface ##" + INDENTATION * 4 + if_size + " " + if_number + " is created.")
         trans.apply()
 
 
@@ -388,25 +456,29 @@ class InventoryUpdate(ncs.dp.Action):
                 self.log.info("Device ##" + INDENTATION * 2 + hostname + " platform is ios-xr.")
                 inventory_data = iosxr_get_device_live_status_inventory(root, hostname, self.log)
                 controllers_data = iosxr_get_device_live_status_controllers(root, hostname, self.log)
-                interfaces_data = iosxr_get_device_cdb_interfaces(root, hostname, self.log)
+                interface_data = iosxr_get_device_cdb_interfaces(root, hostname, self.log)
                 iosxr_populate_inventory_grouping(inventory_data, inventory_name, hostname, self.log)
                 iosxr_populate_controllers_grouping(controllers_data, inventory_name, hostname, self.log)
-                iosxr_populate_interfaces_grouping(interfaces_data, inventory_name, hostname, self.log)
+                iosxr_populate_interfaces_grouping(interface_data, inventory_name, hostname, self.log)
 
             elif platform == "huawei-vrp":
                 self.log.info("Device ##" + INDENTATION * 2 + hostname + " platform is huawei-vrp.")
-                inventory_data = huawei_vrp_get_device_live_status_exec_inventory(root, hostname, self.log)
-                transceiver_data = huawei_vrp_get_device_live_status_exec_transceiver(root, hostname, self.log)
-                huawei_vrp_populate_inventory_grouping(inventory_data, inventory_name, hostname, self.log)
-                huawei_vrp_populate_controllers_grouping(transceiver_data, inventory_name, hostname, self.log)
+                # inventory_data = huawei_vrp_get_device_live_status_exec_inventory(root, hostname, self.log)
+                # transceiver_data = huawei_vrp_get_device_live_status_exec_transceiver(root, hostname, self.log)
+                interface_data = huawei_vrp_get_device_cdb_interfaces(root, hostname, self.log)
+                # huawei_vrp_populate_inventory_grouping(inventory_data, inventory_name, hostname, self.log)
+                # huawei_vrp_populate_controllers_grouping(transceiver_data, inventory_name, hostname, self.log)
+                huawei_vrp_populate_interfaces_grouping(interface_data, inventory_name, hostname, self.log)
 
             else:
                 self.log.info("Device ##" + INDENTATION * 2 + hostname + " platform is alu-sr.")
-                card_data = alu_sr_get_device_live_status_card(root, hostname, self.log)
-                slot_data = alu_sr_get_device_live_status_slot(root, hostname, self.log)
-                ports_data = alu_sr_get_device_live_status_ports(root, hostname, self.log)
-                alu_sr_populate_inventory_grouping(card_data, slot_data, inventory_name, hostname, self.log)
-                alu_sr_populate_controllers_grouping(ports_data, inventory_name, hostname, self.log)
+                # card_data = alu_sr_get_device_live_status_card(root, hostname, self.log)
+                # slot_data = alu_sr_get_device_live_status_slot(root, hostname, self.log)
+                # ports_data = alu_sr_get_device_live_status_ports(root, hostname, self.log)
+                interface_data = alu_sr_get_device_cdb_interfaces(root, hostname, self.log)
+                # alu_sr_populate_inventory_grouping(card_data, slot_data, inventory_name, hostname, self.log)
+                # alu_sr_populate_controllers_grouping(ports_data, inventory_name, hostname, self.log)
+                alu_sr_populate_interfaces_grouping(interface_data, inventory_name, hostname, self.log)
 
         output.result = f"Devices processed: {len(devices)}"
 

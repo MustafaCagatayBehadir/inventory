@@ -8,8 +8,6 @@ SRC = $(wildcard yang/*.yang)
 DIRS = ../load-dir
 FXS = $(SRC:yang/%.yang=../load-dir/%.fxs)
 
-
-YANGPATH += .
 NCSCPATH   = $(YANGPATH:%=--yangpath %)
 YANGERPATH = $(YANGPATH:%=--path %)
 
