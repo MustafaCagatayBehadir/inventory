@@ -28,6 +28,26 @@ class VrpTransceiver(NamedTuple):
     pid: str
 
 
+class PoolInfo(NamedTuple):
+    """Resource-Manager id pool class."""
+
+    name: str
+    start: int
+    end: int
+
+
+GLOBAL_POOLS = [
+    PoolInfo(name="PW_ID_POOL", start=10000, end=20000),
+    PoolInfo(name="SERVICE_ID_POOL", start=10000, end=20000),
+]
+DEVICE_POOLS = [PoolInfo(name="SDP_ID_POOL", start=10000, end=20000)]
+INTERFACE_POOLS = [
+    PoolInfo(name="CVLAN_ID_POOL", start=2, end=4000),
+    PoolInfo(name="SVLAN_ID_POOL", start=2, end=4000),
+    PoolInfo(name="SUB_INTF_POOL", start=2, end=4000),
+]
+
+
 def get_kp_service_id(keypath: ncs.maagic.keypath._KeyPath) -> str:
     """Get service name from keypath."""
     kpath = str(keypath)
@@ -56,6 +76,35 @@ def populate_platform_grouping(inventory_name: str, device_hostname: str, log: n
         device_platform.serial_number = platform.serial_number
         log.info("Device ##" + INDENTATION * 2 + device_hostname + " platform details are set.")
         trans.apply()
+
+
+def create_inventory_resource_pools(inventory_name: str, log: ncs.log.Log) -> None:
+    """Create id-pools for inventory."""
+    log.info("Function ##" + INDENTATION * 2 + inspect.stack()[0][3])
+    with ncs.maapi.single_write_trans(USER, "system") as trans:
+        root = ncs.maagic.get_root(trans)
+        inventory_manager = ncs.maagic.get_node(trans, f"/inv:inventory-manager{{{inventory_name}}}")
+        id_pool = root.ralloc__resource_pools.idalloc__id_pool
+        for global_pool in GLOBAL_POOLS:
+            pool_name = global_pool.name
+            pool = id_pool.create(pool_name)
+            pool.start, pool.end = global_pool.start, global_pool.end
+            log.info("Inventory Pool ##" + INDENTATION * 2 + pool_name + " is created.")
+        for device in inventory_manager:
+            device_name = device.name
+            for device_pool in DEVICE_POOLS:
+                pool_name = device_name + "_" + device_pool.name
+                pool = id_pool.create(pool_name)
+                pool.start, pool.end = device_pool.start, device_pool.end
+                log.info("Device Pool ##" + INDENTATION * 4 + pool_name + " is created.")
+            for interface in device.interface:
+                if_size = interface.if_size
+                if_number = str(interface.if_number).replace("/", "_")
+                for interface_pool in INTERFACE_POOLS:
+                    pool_name = device_name + "_" + if_size + "_" + if_number + "_" + interface_pool.name
+                    pool = id_pool.create(pool_name)
+                    pool.start, pool.end = interface_pool.start, interface_pool.end
+                    log.info("Interface Pool ##" + INDENTATION * 6 + pool_name + " is created.")
 
 
 def iosxr_get_device_live_status_inventory(
