@@ -44,7 +44,7 @@ DEVICE_POOLS = [PoolInfo(name="SDP_ID_POOL", start=10000, end=20000)]
 INTERFACE_POOLS = [
     PoolInfo(name="CVLAN_ID_POOL", start=2, end=4000),
     PoolInfo(name="SVLAN_ID_POOL", start=2, end=4000),
-    PoolInfo(name="SUB_INTF_POOL", start=2, end=4000),
+    PoolInfo(name="SUB_INTF_ID_POOL", start=2, end=4000),
 ]
 
 
@@ -87,25 +87,36 @@ def create_inventory_resource_pools(inventory_name: str, log: ncs.log.Log) -> No
         id_pool = root.ralloc__resource_pools.idalloc__id_pool
         for global_pool in GLOBAL_POOLS:
             pool_name = global_pool.name
-            pool = id_pool.create(pool_name)
-            pool.start, pool.end = global_pool.start, global_pool.end
-            log.info("Inventory Pool ##" + INDENTATION * 2 + pool_name + " is created.")
-        for device in inventory_manager:
+            if pool_name not in id_pool:
+                pool = id_pool.create(pool_name)
+                pool.range.start, pool.range.end = global_pool.start, global_pool.end
+                log.info("Inventory Pool ##" + INDENTATION * 2 + pool_name + " is created.")
+            else:
+                log.info("Inventory Pool ##" + INDENTATION * 2 + pool_name + " is already created, skipping.")
+
+        for device in inventory_manager.device:
             device_name = device.name
             for device_pool in DEVICE_POOLS:
                 pool_name = device_name + "_" + device_pool.name
-                pool = id_pool.create(pool_name)
-                pool.start, pool.end = device_pool.start, device_pool.end
-                log.info("Device Pool ##" + INDENTATION * 4 + pool_name + " is created.")
+                if pool_name not in id_pool:
+                    pool = id_pool.create(pool_name)
+                    pool.range.start, pool.range.end = device_pool.start, device_pool.end
+                    log.info("Device Pool ##" + INDENTATION * 4 + pool_name + " is created.")
+                else:
+                    log.info("Device Pool ##" + INDENTATION * 4 + pool_name + " is already created, skipping.")
+
             for interface in device.interface:
                 if_size = interface.if_size
                 if_number = str(interface.if_number).replace("/", "_")
                 for interface_pool in INTERFACE_POOLS:
                     pool_name = device_name + "_" + if_size + "_" + if_number + "_" + interface_pool.name
-                    pool = id_pool.create(pool_name)
-                    pool.start, pool.end = interface_pool.start, interface_pool.end
-                    log.info("Interface Pool ##" + INDENTATION * 6 + pool_name + " is created.")
-
+                    if pool_name not in id_pool:
+                        pool = id_pool.create(pool_name)
+                        pool.range.start, pool.range.end = interface_pool.start, interface_pool.end
+                        log.info("Interface Pool ##" + INDENTATION * 6 + pool_name + " is created.")
+                    else:
+                        log.info("Interface Pool ##" + INDENTATION * 6 + pool_name + " is already created, skipping.")
+        trans.apply()
 
 def iosxr_get_device_live_status_inventory(
     root: ncs.maagic.Root, device_hostname: str, log: ncs.log.Log
@@ -196,6 +207,7 @@ def iosxr_populate_interfaces_grouping(
         inventory_manager = ncs.maagic.get_node(trans, f"/inv:inventory-manager{{{inventory_name}}}")
         device = inventory_manager.device[device_hostname]
         del device.interface  # Delete device interface list first to re-create from scratch
+        log.info("Device ##" + INDENTATION * 2 + " interface list is deleted.")
         for if_size in if_sizes:
             for size in getattr(interface_data, if_size):
                 if_number = str(size.id)
@@ -340,6 +352,7 @@ def huawei_vrp_populate_interfaces_grouping(
         inventory_manager = ncs.maagic.get_node(trans, f"/inv:inventory-manager{{{inventory_name}}}")
         device = inventory_manager.device[device_hostname]
         del device.interface  # Delete device interface list first to re-create from scratch
+        log.info("Device ##" + INDENTATION * 2 + " interface list is deleted.")
         for if_size in if_sizes:
             for size in getattr(interface_data, if_size):
                 if_number = str(size.name).split(".", maxsplit=1)[0]
@@ -445,6 +458,7 @@ def alu_sr_populate_interfaces_grouping(
         inventory_manager = ncs.maagic.get_node(trans, f"/inv:inventory-manager{{{inventory_name}}}")
         device = inventory_manager.device[device_hostname]
         del device.interface  # Delete device interface list first to re-create from scratch
+        log.info("Device ##" + INDENTATION * 2 + " interface list is deleted.")
         for port in ports_data:
             if_size = "port"
             if_number = str(port.port_id)
@@ -512,23 +526,24 @@ class InventoryUpdate(ncs.dp.Action):
 
             elif platform == "huawei-vrp":
                 self.log.info("Device ##" + INDENTATION * 2 + hostname + " platform is huawei-vrp.")
-                # inventory_data = huawei_vrp_get_device_live_status_exec_inventory(root, hostname, self.log)
-                # transceiver_data = huawei_vrp_get_device_live_status_exec_transceiver(root, hostname, self.log)
+                inventory_data = huawei_vrp_get_device_live_status_exec_inventory(root, hostname, self.log)
+                transceiver_data = huawei_vrp_get_device_live_status_exec_transceiver(root, hostname, self.log)
                 interface_data = huawei_vrp_get_device_cdb_interfaces(root, hostname, self.log)
-                # huawei_vrp_populate_inventory_grouping(inventory_data, inventory_name, hostname, self.log)
-                # huawei_vrp_populate_controllers_grouping(transceiver_data, inventory_name, hostname, self.log)
+                huawei_vrp_populate_inventory_grouping(inventory_data, inventory_name, hostname, self.log)
+                huawei_vrp_populate_controllers_grouping(transceiver_data, inventory_name, hostname, self.log)
                 huawei_vrp_populate_interfaces_grouping(interface_data, inventory_name, hostname, self.log)
 
             else:
                 self.log.info("Device ##" + INDENTATION * 2 + hostname + " platform is alu-sr.")
-                # card_data = alu_sr_get_device_live_status_card(root, hostname, self.log)
-                # slot_data = alu_sr_get_device_live_status_slot(root, hostname, self.log)
-                # ports_data = alu_sr_get_device_live_status_ports(root, hostname, self.log)
+                card_data = alu_sr_get_device_live_status_card(root, hostname, self.log)
+                slot_data = alu_sr_get_device_live_status_slot(root, hostname, self.log)
+                ports_data = alu_sr_get_device_live_status_ports(root, hostname, self.log)
                 interface_data = alu_sr_get_device_cdb_interfaces(root, hostname, self.log)
-                # alu_sr_populate_inventory_grouping(card_data, slot_data, inventory_name, hostname, self.log)
-                # alu_sr_populate_controllers_grouping(ports_data, inventory_name, hostname, self.log)
+                alu_sr_populate_inventory_grouping(card_data, slot_data, inventory_name, hostname, self.log)
+                alu_sr_populate_controllers_grouping(ports_data, inventory_name, hostname, self.log)
                 alu_sr_populate_interfaces_grouping(interface_data, inventory_name, hostname, self.log)
 
+        create_inventory_resource_pools(inventory_name, self.log)
         output.result = f"Devices processed: {len(devices)}"
 
 
