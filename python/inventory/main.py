@@ -466,7 +466,7 @@ def alu_sr_populate_interfaces_grouping(
             log.info("Interface ##" + INDENTATION * 4 + if_size + " " + if_number + " is created.")
         for lag in lags_data:
             if_size = "lag"
-            if_number = str(lag.id)
+            if_number = f"lag-{str(lag.id)}"
             device.interface.create(if_size, if_number)
             log.info("Interface ##" + INDENTATION * 4 + if_size + " " + if_number + " is created.")
         trans.apply()
